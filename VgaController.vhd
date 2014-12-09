@@ -1,0 +1,163 @@
+-- Chris Geraldpaulraj FPGA Final Project 
+-- This part of the project makes the horizontal and veritcal sync for the VGA Controller.
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.all;
+USE IEEE.STD_LOGIC_ARITH.ALL;
+USE IEEE.STD_LOGIC_UNSIGNED.ALL;
+
+ENTITY VgaController IS
+	PORT(START : IN STD_LOGIC;
+		  RESET : IN STD_LOGIC;
+		  CLK :   IN STD_LOGIC;
+		  HORIZONTAL_CONTROL : OUT STD_LOGIC_VECTOR(9 DOWNTO 0);
+		  VERTICAL_CONTROL : OUT STD_LOGIC_VECTOR(9 DOWNTO 0);
+		  VGA_HS :   OUT STD_LOGIC;
+		  VGA_VS :   OUT STD_LOGIC;
+		  VIDEO_START : OUT STD_LOGIC
+		 );
+		 
+END ENTITY;
+
+ARCHITECTURE RTL OF VgaController IS
+	
+	--- VIDEO PARAMETERS
+	
+	CONSTANT HR : INTEGER:= 640;
+	CONSTANT HFP : INTEGER:= 16;
+	CONSTANT HBP : INTEGER:= 48;
+   CONSTANT HRET : INTEGER:= 96;
+   CONSTANT VR : INTEGER:= 480;
+   CONSTANT VFP : INTEGER:= 10; 
+   CONSTANT VBP : INTEGER:= 33;
+   CONSTANT VRET : INTEGER:= 2;
+
+   SIGNAL COUNTER_H,COUNTER_H_NEXT : INTEGER RANGE 0 TO 799;
+   SIGNAL COUNTER_V,COUNTER_V_NEXT : INTEGER RANGE 0 TO 524;	
+	
+	SIGNAL COUNTER_MOD2,COUNTER_MOD2_NEXT : STD_LOGIC := '0';
+	
+	SIGNAL H_END, V_END:STD_LOGIC := '0';
+    
+   SIGNAL HS_BUFFER,HS_BUFFER_NEXT : STD_LOGIC := '0';
+   SIGNAL VS_BUFFER,VS_BUFFER_NEXT :STD_LOGIC := '0';
+    
+   SIGNAL X_COUNTER, X_COUNTER_NEXT : INTEGER RANGE 0 TO 900;
+   SIGNAL Y_COUNTER, Y_COUNTER_NEXT : INTEGER RANGE 0 TO 900;
+    
+   SIGNAL VIDEO : STD_LOGIC;
+
+	BEGIN
+    
+    PROCESS(CLK,RESET,START)
+	 
+    BEGIN
+	 
+        IF RESET = '1' THEN
+           COUNTER_H <= 0;
+           COUNTER_V <= 0;
+           HS_BUFFER <= '0';
+           HS_BUFFER <= '0';
+           COUNTER_MOD2 <= '0';
+				
+				ELSIF CLK'EVENT AND CLK = '1' THEN
+					
+					IF START='1' THEN
+					
+						COUNTER_H <= COUNTER_H_NEXT;
+						COUNTER_V <= COUNTER_V_NEXT;
+						X_COUNTER <= X_COUNTER_NEXT;
+						Y_COUNTER <= Y_COUNTER_NEXT;
+						HS_BUFFER <= HS_BUFFER_NEXT;
+						VS_BUFFER <= VS_BUFFER_NEXT;
+						COUNTER_MOD2 <= COUNTER_MOD2_NEXT;
+						
+					END IF;
+					
+				END IF;
+				
+    END PROCESS;
+
+	  --VIDEO ON/OFF
+    VIDEO <= '1' WHEN (COUNTER_V >= VBP) AND (COUNTER_V < VBP + VR) AND (COUNTER_H >= HBP) AND (COUNTER_H < HBP + HR)   ELSE '0';
+                    
+
+   --MOD 2 COUNTER
+    COUNTER_MOD2_NEXT <= NOT COUNTER_MOD2;
+    --END OF HORIZONTAL SCANNING 
+    H_END<= '1' WHEN COUNTER_H = 799 ELSE '0'; 
+                    
+    -- END OF VERTICAL SCANNING
+    V_END<= '1' WHEN COUNTER_V=524 ELSE '0'; 
+                  
+     -- HORIZONTAL COUNTER
+     PROCESS(COUNTER_H,COUNTER_MOD2,H_END)
+     BEGIN
+         COUNTER_H_NEXT<=COUNTER_H;
+         IF COUNTER_MOD2= '1' THEN
+             IF H_END='1' THEN
+                   COUNTER_H_NEXT<=0;
+             ELSE
+                   COUNTER_H_NEXT<=COUNTER_H+1;
+             END IF;
+        END IF;
+     END PROCESS;
+
+    -- VERTICAL COUNTER
+    PROCESS(COUNTER_V,COUNTER_MOD2,H_END,V_END)
+    BEGIN 
+        COUNTER_V_NEXT <= COUNTER_V;
+        IF COUNTER_MOD2= '1' AND H_END='1' THEN
+            IF V_END='1' THEN
+                   COUNTER_V_NEXT<=0;
+             ELSE
+                    COUNTER_V_NEXT<=COUNTER_V+1;
+             END IF;
+       END IF;
+    END PROCESS;
+
+   --PIXEL X COUNTER
+    PROCESS(X_COUNTER,COUNTER_MOD2,H_END,VIDEO)
+    BEGIN 
+         X_COUNTER_NEXT<=X_COUNTER;
+         IF VIDEO = '1' THEN 
+            IF COUNTER_MOD2= '1' THEN 
+                IF X_COUNTER= 639 THEN
+                    X_COUNTER_NEXT<=0;
+                ELSE
+                    X_COUNTER_NEXT<=X_COUNTER + 1;
+                END IF;
+            END IF;
+       ELSE
+            X_COUNTER_NEXT<=0;
+       END IF;
+    END PROCESS;
+
+   --PIXEL Y COUNTER
+    PROCESS(Y_COUNTER,COUNTER_MOD2,H_END,COUNTER_V)
+    BEGIN 
+         Y_COUNTER_NEXT<=Y_COUNTER;
+         IF COUNTER_MOD2= '1' AND H_END='1' THEN 
+            IF COUNTER_V >32 AND COUNTER_V <512 THEN
+                 Y_COUNTER_NEXT<=Y_COUNTER + 1;
+            ELSE 
+                 Y_COUNTER_NEXT<=0; 
+            END IF;
+         END IF;
+    END PROCESS;
+
+   --BUFFER
+    HS_BUFFER_NEXT<= '1' WHEN COUNTER_H < 704 ELSE '0';  
+                                     
+     VS_BUFFER_NEXT<='1' WHEN COUNTER_V < 523 ELSE '0';  
+                                    
+
+    --OUTPUTS
+    VERTICAL_CONTROL <= CONV_STD_LOGIC_VECTOR(Y_COUNTER,10); 
+    HORIZONTAL_CONTROL <= CONV_STD_LOGIC_VECTOR(X_COUNTER,10); 
+    VGA_HS<= HS_BUFFER;
+    VGA_VS<= VS_BUFFER;
+    VIDEO_START<=VIDEO;
+
+END RTL;
+	 
